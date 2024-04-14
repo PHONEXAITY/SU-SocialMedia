@@ -18,7 +18,17 @@ const friendRequestSchema = new mongoose.Schema({
   createdAt: { 
     type: Date, 
     default: Date.now
- }
+ },
+ rejectedAt: {
+  type: Date 
+}
+
+});
+friendRequestSchema.pre('save', async function (next) {
+  if (this.isModified('status') && this.status === 'rejected') {
+    this.rejectedAt = new Date();
+  }
+  next();
 });
 
 const FriendRequest = mongoose.model('FriendRequest', friendRequestSchema);

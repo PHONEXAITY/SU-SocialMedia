@@ -7,6 +7,7 @@ import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import session from 'express-session';
 import routes from "./routes/index.js"
+import { cleanupRejectedFriendRequests } from './utils/friendRequestUtility.js';
 const app = express();
 dotenv.config();
 
@@ -32,6 +33,9 @@ connectDB();
 
 //Routes
 app.use('/api/v1.0', routes);
+
+//clean friend request reject
+cleanupRejectedFriendRequests();
 
 const PORT = process.env.PORT;
 app.listen(PORT, () =>{

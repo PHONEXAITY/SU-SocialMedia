@@ -1,4 +1,5 @@
 import Models from "../models/index.js";
+import { generateOTP, sendOTPEmail } from "../utils/Otpmail.js";
 import { generateResetToken, sendPasswordResetEmail,verifyResetToken } from '../utils/passwordReset.js';
 
 export const getUserProfile = async (req, res) => {
@@ -87,10 +88,40 @@ export const getUserProfile = async (req, res) => {
 
   export const addFriend = async (req, res) => {
     try {
-      const { userId: _id } = req.body;
-      res.status(200).json({ message: 'Friend added successfully' });
+      const { userId } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({ message: 'userId is required' });
+      }
+
+      const senderId = req.user._id;
+      if (senderId === userId) {
+        return res.status(400).json({ message: 'Cannot add yourself as a friend' });
+      }
+
+      const user = await Models.User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      if (user.friendList.includes(senderId)) {
+        return res.status(400).json({ message: 'User is already your friend' });
+      }
+
+      const existingRequest = await Models.FriendRequest.findOne({ sender: senderId, recipient: userId });
+      if (existingRequest) {
+        if (existingRequest.status === 'accepted') {
+          return res.status(400).json({ message: 'User is already your friend' });
+        } else {
+          return res.status(400).json({ message: 'Friend request already sent' });
+        }
+      }
+
+      const friendRequest = new Models.FriendRequest({ sender: senderId, recipient: userId });
+      await friendRequest.save();
+  
+      res.status(200).json({ message: 'Friend request sent successfully' });
     } catch (error) {
-      console.error('Error adding friend:', error);
+      console.error('Error sending friend request:', error);
       res.status(500).json({ message: 'Internal server error' });
     }
   };
@@ -183,24 +214,97 @@ export const removeFriend = async (req, res) => {
     }
   };
 
-  export const updateFriendRequestStatus = async (req, res) => {
-    try {
-      const { requestId } = req.params;
-      const { status } = req.body;
-
-      const friendRequest = await Models.FriendRequest.findById(requestId);
-  
-      if (!friendRequest) {
-        return res.status(404).json({ message: 'Friend request not found' });
-      }
-
-      friendRequest.status = status;
-
-      await friendRequest.save();
-  
-      res.status(200).json({ message: 'Friend request status updated successfully' });
-    } catch (error) {
-      console.error('Error updating friend request status:', error);
-      res.status(500).json({ message: 'Internal server error' });
+  export const acceptFriendRequest = async (req, res) => {
+    const requestId = req.params.requestId;
+  try {
+    const friendRequest = await Models.FriendRequest.findById(requestId);
+    if (!friendRequest) {
+      return res.status(404).json({ error: 'Friend request not found' });
     }
+
+    if (friendRequest.status !== 'pending') {
+      return res.status(400).json({ error: 'Friend request has already been processed' });
+    }
+
+    friendRequest.status = 'accepted';
+    await friendRequest.save();
+
+    await Models.User.findByIdAndUpdate(friendRequest.sender, { $push: { friendList: friendRequest.recipient } });
+
+    await Models.User.findByIdAndUpdate(friendRequest.recipient, { $push: { friendList: friendRequest.sender } });
+
+    return res.status(200).json({ message: 'Friend request accepted successfully' });
+  } catch (error) {
+    return res.status(500).json({ error: `Error accepting friend request: ${error.message}` });
+  }
   };
+  
+  export const rejectFriendRequest = async (req,res) => {
+    const requestId = req.params.requestId;
+  try {
+    const friendRequest = await Models.FriendRequest.findById(requestId);
+    if (!friendRequest) {
+      return res.status(404).json({ error: 'Friend request not found' });
+    }
+
+    if (friendRequest.status !== 'pending') {
+      return res.status(400).json({ error: 'Friend request has already been processed' });
+    }
+
+    friendRequest.status = 'rejected';
+    await friendRequest.save();
+
+    return res.status(200).json({ message: 'Friend request rejected successfully' });
+  } catch (error) {
+    return res.status(500).json({ error: `Error rejecting friend request: ${error.message}` });
+  }
+};
+
+const deleteUserAccount = async (userId) => {
+  await User.findByIdAndDelete(userId);
+};
+
+
+export const sendOTPViaEmailController = async (req, res) => {
+  try {
+    const { userId, email } = req.params;
+    const generatedOTP = generateOTP();
+    await sendOTPEmail(email, generatedOTP);
+
+    res.status(200).json({ message: 'OTP sent successfully' });
+  } catch (error) {
+    console.error('Error sending OTP via email:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+
+export const verifyOTPAndDeleteAccountController = async (req, res) => {
+  try {
+    const { userId, otp } = req.params;
+
+    const user = await Models.User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (!user.otp || !user.otp.code || !user.otp.expiresAt) {
+      return res.status(400).json({ message: 'OTP not found or expired' });
+    }
+
+    const currentTimestamp = new Date().getTime();
+    if (otp !== user.otp.code || currentTimestamp > user.otp.expiresAt) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+
+    await deleteUserAccount(userId);
+
+    res.status(200).json({ message: 'User account deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting user account:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+
+
