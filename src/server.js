@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import connectDB from "./config/connectDB.js";
 import helmet from "helmet";
 import morgan from "morgan";
+import cors from "cors"
 import cookieParser from "cookie-parser";
 import session from 'express-session';
 import routes from "./routes/index.js"
@@ -24,6 +25,7 @@ app.use(session({
       secure: false, //true for HTTPS
     }
   }));
+app.use(cors());
 app.use(helmet());
 app.use(morgan("common"));
 
@@ -36,6 +38,15 @@ app.use('/api/v1.0', routes);
 
 //clean friend request reject
 cleanupRejectedFriendRequests();
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header(  "Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization" );
+  if (req.method === "OPTIONS") {
+    res.header("Access-Control-Allow-Methods", "PUT, POST, PATCH, DELETE, GET");
+    return res.status(200).json({});
+  }
+  next();
+}); 
 
 const PORT = process.env.PORT;
 app.listen(PORT, () =>{

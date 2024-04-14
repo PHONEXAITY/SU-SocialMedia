@@ -1,5 +1,5 @@
 import Models from "../models/index.js";
-import { generateOTP, sendOTPEmail } from "../utils/Otpmail.js";
+import { generateOTP, sendOTPEmail } from "../utils/otpMail.js";
 import { generateResetToken, sendPasswordResetEmail,verifyResetToken } from '../utils/passwordReset.js';
 
 export const getUserProfile = async (req, res) => {
